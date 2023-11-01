@@ -40,7 +40,8 @@ namespace SOCKS5 {
         co_await this->send_auth_response(client_socket, select_auth_method(welcome_message));
 
         auto client_req = co_await this->get_client_request(client_socket);
-        co_await this->handle_client_request(client_req);
+        auto endpoint = co_await this->handle_client_request(client_req);
+        std::cout << Colors::CYAN << "\tRequest - host: " << endpoint.address() << ':' << endpoint.port() << Colors::RESET << std::endl;
         co_return;
     }
 
@@ -85,15 +86,36 @@ namespace SOCKS5 {
     }
 
     asio::awaitable<tcp::endpoint> Main_server::handle_client_request(std::vector<unsigned char> &request) {
-//        auto cmd = request[1];
-//        if (cmd != SOCKS5::CONNECT) {
-//            std::cerr << "Unsupported operation: " << static_cast<int>(cmd) << std::endl;
-//            co_return tcp::endpoint {tcp::v6(), 0};
-//        }
+        auto cmd = request[1];
+        if (cmd != SOCKS5::CONNECT) {
+            std::cerr << "Unsupported operation: " << static_cast<int>(cmd) << std::endl;
+            co_return tcp::endpoint{tcp::v6(), 0};
+        }
         std::cout << Colors::YELLOW << "\tRequest - version: " << static_cast<int>(request[0]) <<
                   ", CMD: " << static_cast<int>(request[1]) <<
                   ", ATYP: " << static_cast<int>(request[3]) << Colors::RESET << std::endl;
-        co_return tcp::endpoint{tcp::v6(), 0};
-    }
 
+
+        unsigned short dest_port;
+        std::array<unsigned char, 4> ip{};
+        std::string ipStr;
+        switch (request[3]) {
+            case SOCKS5::IP_V4:
+                for (int i = 0; i < 4; ++i) {
+                    ip[i] = request[i + 4];
+                }
+                ipStr =
+                        std::to_string(ip[0]) + "." + std::to_string(ip[1]) + "." + std::to_string(ip[2]) + "." +
+                        std::to_string(ip[3]);
+
+                // it's ok cuz port is always unsigned short type
+                dest_port = static_cast<unsigned short>(request[8]) << 8 | static_cast<unsigned short>(request[9]);
+                co_return tcp::endpoint{asio::ip::address_v4::from_string(ipStr), dest_port};
+            case SOCKS5::DOMAINNAME:
+                // TODO: resolve DNS
+                break;
+        }
+        co_return tcp::endpoint{tcp::v6(), 0};
+
+    }
 }

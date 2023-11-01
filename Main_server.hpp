@@ -4,7 +4,6 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
-#include <boost/bind.hpp>
 #include <iostream>
 
 #include "Colors.hpp"
@@ -39,7 +38,7 @@ namespace SOCKS5 {
 
     public:
 
-        Main_server(unsigned short port_);
+        explicit Main_server(unsigned short port_);
 
         void start_server();
 
