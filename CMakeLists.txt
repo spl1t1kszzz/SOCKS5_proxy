@@ -3,7 +3,8 @@ project(SOCKS5_proxy)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(SOCKS5_proxy main.cpp
+add_executable(SOCKS5_proxy
+        main.cpp
         Colors.hpp
         Main_server.hpp
         Main_server.cpp)

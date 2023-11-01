@@ -35,13 +35,12 @@ namespace SOCKS5 {
         asio::awaitable<void> send_auth_response(tcp::socket& socket, const unsigned char& method);
         asio::awaitable <std::vector<unsigned char>> get_client_request(tcp::socket& socket);
         asio::awaitable<tcp::endpoint> handle_client_request(std::vector<unsigned char>& request);
-
+        unsigned char get_connect_error(const unsigned char &cmd, const boost::system::error_code &code);
     public:
 
         explicit Main_server(unsigned short port_);
 
         void start_server();
-
 
 
     };

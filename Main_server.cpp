@@ -6,6 +6,7 @@ namespace SOCKS5 {
     namespace asio = boost::asio;
     using tcp = asio::ip::tcp;
 
+
     Main_server::Main_server(unsigned short port_) : port(port_) {}
 
     void Main_server::start_server() {
@@ -27,11 +28,11 @@ namespace SOCKS5 {
     }
 
     asio::awaitable<void> Main_server::client_handler(tcp::socket client_socket) {
-        std::cout << Colors::GREEN << "New connection: " << client_socket.remote_endpoint().address() << ':'
+        std::cout << Colors::RED << "New connection: " << client_socket.remote_endpoint().address() << ':'
                   << client_socket.remote_endpoint().port() << Colors::RESET << std::endl;
         std::array<unsigned char, 3> welcome_message{};
-        co_await asio::async_read(client_socket, boost::asio::buffer(welcome_message),
-                                  asio::use_awaitable); // use_awaitable нужен, чтобы дождаться
+        auto [ec, n] = co_await client_socket.async_read_some(asio::buffer(welcome_message),
+                                                              asio::as_tuple(asio::use_awaitable));
         bool is_valid = co_await this->validate_welcome_message(welcome_message);
         if (!is_valid) {
             client_socket.close();
@@ -41,7 +42,21 @@ namespace SOCKS5 {
 
         auto client_req = co_await this->get_client_request(client_socket);
         auto endpoint = co_await this->handle_client_request(client_req);
-        std::cout << Colors::CYAN << "\tRequest - host: " << endpoint.address() << ':' << endpoint.port() << Colors::RESET << std::endl;
+        std::cout << Colors::CYAN << "\tRequest - host: " << endpoint.address() << ':' << endpoint.port()
+                  << Colors::RESET << std::endl;
+        tcp::socket remote_socket{co_await asio::this_coro::executor};
+        auto [error] = co_await remote_socket.async_connect(endpoint, asio::as_tuple(asio::use_awaitable));
+        if (!error) {
+            std::cout << Colors::GREEN << "\tConnection successful :)" << Colors::RESET << std::endl;
+            std::array<unsigned char, 10> reply{SOCKS5::VERSION, 0x00, SOCKS5::RSV, SOCKS5::IP_V4, 0x7f, 0x00, 0x00,
+                                                0x01, 0x00, 0x00};
+            reply[1] = this->get_connect_error(client_req[1], error);
+            reply[8] = (this->port >> 8) & 0xff;
+            reply[9] = (this->port) & 0xff;
+            auto [er, bytes] = co_await client_socket.async_send(asio::buffer(reply), asio::as_tuple(asio::use_awaitable));
+        } else {
+        }
+
         co_return;
     }
 
@@ -56,8 +71,7 @@ namespace SOCKS5 {
     }
 
 
-    unsigned char Main_server::select_auth_method(
-            const std::array<unsigned char, 3> &welcome_message) {
+    unsigned char Main_server::select_auth_method(const std::array<unsigned char, 3> &welcome_message) {
         unsigned char nmethods = welcome_message[1];
         for (unsigned char i = 2; i < nmethods + 2; ++i) {
             if (welcome_message[i] == SOCKS5::NO_AUTH) {
@@ -80,7 +94,6 @@ namespace SOCKS5 {
         asio::streambuf buffer;
         std::size_t n = co_await asio::async_read(socket, buffer, asio::transfer_at_least(1), asio::use_awaitable);
         std::vector<unsigned char> request(asio::buffers_begin(buffer.data()), asio::buffers_end(buffer.data()));
-        //std::cout << n << std::endl;
         co_return request;
 
     }
@@ -118,4 +131,22 @@ namespace SOCKS5 {
         co_return tcp::endpoint{tcp::v6(), 0};
 
     }
+
+    unsigned char Main_server::get_connect_error(const unsigned char &cmd, const boost::system::error_code &code) {
+        if (code == boost::asio::error::network_unreachable) {
+            return 0x03;
+        } else if (code == boost::asio::error::host_unreachable) {
+            return 0x04;
+        } else if (code == boost::asio::error::connection_refused) {
+            return 0x05;
+        } else if (code == boost::asio::error::timed_out) {
+            return 0x06;
+        } else if (cmd != SOCKS5::CONNECT) {
+            return 0x07;
+        } else if (code == boost::asio::error::address_family_not_supported) {
+            return 0x08;
+        }
+        return SOCKS5::SUCCESS;
+    }
 }
+
