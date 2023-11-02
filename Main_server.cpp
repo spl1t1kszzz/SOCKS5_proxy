@@ -53,7 +53,14 @@ namespace SOCKS5 {
             reply[1] = this->get_connect_error(client_req[1], error);
             reply[8] = (this->port >> 8) & 0xff;
             reply[9] = (this->port) & 0xff;
-            auto [er, bytes] = co_await client_socket.async_send(asio::buffer(reply), asio::as_tuple(asio::use_awaitable));
+            auto [er, bytes] = co_await client_socket.async_send(asio::buffer(reply),
+                                                                 asio::as_tuple(asio::use_awaitable));
+
+
+            const auto executor = co_await asio::this_coro::executor;
+            asio::co_spawn(executor, [this, &client_socket, &remote_socket]() {
+                return handle_client_data(std::move(client_socket), std::move(remote_socket));
+            }, asio::detached);
         } else {
         }
 
@@ -126,6 +133,22 @@ namespace SOCKS5 {
                 co_return tcp::endpoint{asio::ip::address_v4::from_string(ipStr), dest_port};
             case SOCKS5::DOMAINNAME:
                 // TODO: resolve DNS
+                int domain_name_len = static_cast<int>(request[4]);
+                std::vector<char> host_name(domain_name_len);
+                int i = 0;
+                for (i = 0; i < domain_name_len; ++i) {
+                    host_name[i] = static_cast<char>(request[i + 5]);
+                }
+                dest_port = static_cast<unsigned short>(request[i]) << 8 | static_cast<unsigned short>(request[i + 1]);
+                for (const auto &c: host_name) {
+                    std::cout << c;
+                }
+                std::cout << ':' << dest_port << std::endl;
+                asio::ip::tcp::resolver resolver{co_await asio::this_coro::executor};
+                asio::ip::tcp::resolver::query query{std::string(host_name.data(), domain_name_len),
+                                                     std::to_string(dest_port)};
+                auto [ec, it] = co_await resolver.async_resolve(query, asio::as_tuple(asio::use_awaitable));
+                co_return *it;
                 break;
         }
         co_return tcp::endpoint{tcp::v6(), 0};
@@ -148,5 +171,21 @@ namespace SOCKS5 {
         }
         return SOCKS5::SUCCESS;
     }
+
+
+    asio::awaitable<void> Main_server::handle_client_data(tcp::socket client_socket, tcp::socket remote_socket) {
+        for (;;) {
+            std::array<unsigned char, 4096> buffer{};
+            std::size_t n = co_await asio::async_read(client_socket, asio::buffer(buffer), asio::transfer_at_least(1),
+                                                      asio::use_awaitable);
+            co_await asio::async_write(remote_socket, asio::buffer(buffer, n), asio::transfer_at_least(1),
+                                       asio::use_awaitable);
+            n = co_await asio::async_read(remote_socket, asio::buffer(buffer, n), asio::transfer_at_least(1),
+                                          asio::use_awaitable);
+            co_await asio::async_write(client_socket, asio::buffer(buffer, n), asio::transfer_at_least(1),
+                                       asio::use_awaitable);
+        }
+    }
+
 }
 

@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "Colors.hpp"
+#include "Data_handler.hpp"
 
 namespace SOCKS5 {
     const unsigned char VERSION = 0x05;
@@ -36,6 +37,7 @@ namespace SOCKS5 {
         asio::awaitable <std::vector<unsigned char>> get_client_request(tcp::socket& socket);
         asio::awaitable<tcp::endpoint> handle_client_request(std::vector<unsigned char>& request);
         unsigned char get_connect_error(const unsigned char &cmd, const boost::system::error_code &code);
+        asio::awaitable<void> handle_client_data(tcp::socket client_socket, tcp::socket remote_socket);
     public:
 
         explicit Main_server(unsigned short port_);
