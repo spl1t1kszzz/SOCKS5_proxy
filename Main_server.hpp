@@ -38,6 +38,7 @@ namespace SOCKS5 {
         asio::awaitable<tcp::endpoint> handle_client_request(std::vector<unsigned char>& request);
         unsigned char get_connect_error(const unsigned char &cmd, const boost::system::error_code &code);
         asio::awaitable<void> handle_client_data(tcp::socket client_socket, tcp::socket remote_socket);
+
     public:
 
         explicit Main_server(unsigned short port_);

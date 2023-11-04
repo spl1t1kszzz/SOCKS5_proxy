@@ -22,6 +22,7 @@ namespace SOCKS5 {
 
         for (;;) {
             tcp::socket socket = co_await acceptor.async_accept(asio::use_awaitable);
+            socket.non_blocking(true);
             asio::co_spawn(executor, [this, &socket] { return client_handler(std::move(socket)); }, asio::detached);
         }
 
@@ -62,6 +63,7 @@ namespace SOCKS5 {
                 return handle_client_data(std::move(client_socket), std::move(remote_socket));
             }, asio::detached);
         } else {
+            std::cerr << error.message() << std::endl;
         }
 
         co_return;
@@ -176,16 +178,25 @@ namespace SOCKS5 {
     asio::awaitable<void> Main_server::handle_client_data(tcp::socket client_socket, tcp::socket remote_socket) {
         for (;;) {
             std::array<unsigned char, 4096> buffer{};
-            std::size_t n = co_await asio::async_read(client_socket, asio::buffer(buffer), asio::transfer_at_least(1),
-                                                      asio::use_awaitable);
-            co_await asio::async_write(remote_socket, asio::buffer(buffer, n), asio::transfer_at_least(1),
-                                       asio::use_awaitable);
-            n = co_await asio::async_read(remote_socket, asio::buffer(buffer, n), asio::transfer_at_least(1),
-                                          asio::use_awaitable);
-            co_await asio::async_write(client_socket, asio::buffer(buffer, n), asio::transfer_at_least(1),
-                                       asio::use_awaitable);
+            std::size_t n = co_await client_socket.async_read_some(asio::buffer(buffer), asio::use_awaitable);
+            std::cout << client_socket.remote_endpoint().port() << " read from client: " << n << std::endl;
+            co_await remote_socket.async_write_some(asio::buffer(buffer, n), asio::use_awaitable);
+            std::cout << client_socket.remote_endpoint().port() <<" sent to dest: " << n << std::endl;
+            n = co_await remote_socket.async_read_some(asio::buffer(buffer, n), asio::use_awaitable);
+            std::cout << client_socket.remote_endpoint().port() <<" read from dest: " << n << std::endl;
+            n = co_await client_socket.async_write_some(asio::buffer(buffer, n), asio::use_awaitable);
+            std::cout << client_socket.remote_endpoint().port() <<" sent to client: " << n << std::endl;
+            std::swap(client_socket, remote_socket);
+
         }
     }
+
+
+
+
+
+
+
 
 }
 
