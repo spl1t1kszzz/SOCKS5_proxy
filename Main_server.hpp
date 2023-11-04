@@ -4,6 +4,7 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
+#include <boost/asio/spawn.hpp>
 #include <iostream>
 
 #include "Colors.hpp"
@@ -38,6 +39,8 @@ namespace SOCKS5 {
         asio::awaitable<tcp::endpoint> handle_client_request(std::vector<unsigned char>& request);
         unsigned char get_connect_error(const unsigned char &cmd, const boost::system::error_code &code);
         asio::awaitable<void> handle_client_data(tcp::socket client_socket, tcp::socket remote_socket);
+        asio::awaitable<void> remote_to_client(std::shared_ptr<tcp::socket> remote_socket, std::shared_ptr<tcp::socket> client_socket);
+        asio::awaitable<void> client_to_remote(std::shared_ptr<tcp::socket> client_socket, std::shared_ptr<tcp::socket> remote_socket);
 
     public:
 
