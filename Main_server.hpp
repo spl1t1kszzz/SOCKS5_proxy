@@ -4,11 +4,9 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
-#include <boost/asio/spawn.hpp>
 #include <iostream>
 
 #include "Colors.hpp"
-#include "Data_handler.hpp"
 
 namespace SOCKS5 {
     const unsigned char VERSION = 0x05;

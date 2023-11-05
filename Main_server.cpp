@@ -29,8 +29,7 @@ namespace SOCKS5 {
     }
 
     asio::awaitable<void> Main_server::client_handler(tcp::socket client_socket) {
-        std::cout << Colors::RED << "New connection: " << client_socket.remote_endpoint().address() << ':'
-                  << client_socket.remote_endpoint().port() << Colors::RESET << std::endl;
+
         std::array<unsigned char, 3> welcome_message{};
         auto [ec, n] = co_await client_socket.async_read_some(asio::buffer(welcome_message),
                                                               asio::as_tuple(asio::use_awaitable));
@@ -42,13 +41,12 @@ namespace SOCKS5 {
         co_await this->send_auth_response(client_socket, select_auth_method(welcome_message));
 
         auto client_req = co_await this->get_client_request(client_socket);
-        auto endpoint = co_await this->handle_client_request(client_req);
-        std::cout << Colors::CYAN << "\tRequest - host: " << endpoint.address() << ':' << endpoint.port()
-                  << Colors::RESET << std::endl;
+        tcp::endpoint endpoint = co_await this->handle_client_request(client_req);
+
         tcp::socket remote_socket{co_await asio::this_coro::executor};
         auto [error] = co_await remote_socket.async_connect(endpoint, asio::as_tuple(asio::use_awaitable));
         if (!error) {
-            std::cout << Colors::GREEN << "\tConnection successful :)" << Colors::RESET << std::endl;
+
             std::array<unsigned char, 10> reply{SOCKS5::VERSION, 0x00, SOCKS5::RSV, SOCKS5::IP_V4, 0x7f, 0x00, 0x00,
                                                 0x01, 0x00, 0x00};
             reply[1] = this->get_connect_error(client_req[1], error);
@@ -63,16 +61,14 @@ namespace SOCKS5 {
                 return handle_client_data(std::move(client_socket), std::move(remote_socket));
             }, asio::detached);
         } else {
-            std::cerr << error.message() << std::endl;
+            std::cerr << endpoint.port() << std::endl;
+            std::cerr << error.what() << std::endl;
         }
 
         co_return;
     }
 
     asio::awaitable<bool> Main_server::validate_welcome_message(const std::array<unsigned char, 3> &welcome_message) {
-        std::cout << Colors::BLUE << '\t' << "VER=" << static_cast<int>(welcome_message[0]) << ' ';
-        std::cout << "NMETHODS=" << static_cast<int>(welcome_message[1]) << ' ';
-        std::cout << "METHOD=" << static_cast<int>(welcome_message[2]) << Colors::RESET << std::endl;
         if (!(welcome_message[0] == SOCKS5::VERSION && welcome_message[2] == SOCKS5::NO_AUTH)) {
             co_return false;
         }
@@ -94,8 +90,7 @@ namespace SOCKS5 {
     asio::awaitable<void> Main_server::send_auth_response(tcp::socket &socket, const unsigned char &method) {
         std::array<unsigned char, 2> response{SOCKS5::VERSION, method};
         co_await asio::async_write(socket, asio::buffer(response), asio::use_awaitable);
-        std::cout << Colors::MAGENTA << "\tSent auth method to client: " << static_cast<int>(method) << Colors::RESET
-                  << std::endl;
+
         co_return;
     }
 
@@ -113,10 +108,6 @@ namespace SOCKS5 {
             std::cerr << "Unsupported operation: " << static_cast<int>(cmd) << std::endl;
             co_return tcp::endpoint{tcp::v6(), 0};
         }
-        std::cout << Colors::YELLOW << "\tRequest - version: " << static_cast<int>(request[0]) <<
-                  ", CMD: " << static_cast<int>(request[1]) <<
-                  ", ATYP: " << static_cast<int>(request[3]) << Colors::RESET << std::endl;
-
 
         unsigned short dest_port;
         std::array<unsigned char, 4> ip{};
@@ -141,11 +132,8 @@ namespace SOCKS5 {
                 for (i = 0; i < domain_name_len; ++i) {
                     host_name[i] = static_cast<char>(request[i + 5]);
                 }
-                dest_port = static_cast<unsigned short>(request[i]) << 8 | static_cast<unsigned short>(request[i + 1]);
-                for (const auto &c: host_name) {
-                    std::cout << c;
-                }
-                std::cout << ':' << dest_port << std::endl;
+                dest_port = static_cast<unsigned short>(request[i + 5]) << 8 | static_cast<unsigned short>(request[i + 6]);
+
                 asio::ip::tcp::resolver resolver{co_await asio::this_coro::executor};
                 asio::ip::tcp::resolver::query query{std::string(host_name.data(), domain_name_len),
                                                      std::to_string(dest_port)};
@@ -176,18 +164,6 @@ namespace SOCKS5 {
 
 
     asio::awaitable<void> Main_server::handle_client_data(tcp::socket client_socket, tcp::socket remote_socket) {
-//        for (;;) {
-//            std::array<unsigned char, 4096> buffer{};
-//            std::size_t n = co_await client_socket.async_read_some(asio::buffer(buffer), asio::use_awaitable);
-//            std::cout << client_socket.remote_endpoint().port() << " read from client: " << n << std::endl;
-//            co_await remote_socket.async_write_some(asio::buffer(buffer, n), asio::use_awaitable);
-//            std::cout << client_socket.remote_endpoint().port() <<" sent to dest: " << n << std::endl;
-//            n = co_await remote_socket.async_read_some(asio::buffer(buffer, n), asio::use_awaitable);
-//            std::cout << client_socket.remote_endpoint().port() <<" read from dest: " << n << std::endl;
-//            n = co_await client_socket.async_write_some(asio::buffer(buffer, n), asio::use_awaitable);
-//            std::cout << client_socket.remote_endpoint().port() <<" sent to client: " << n << std::endl;
-//            std::swap(client_socket, remote_socket);
-//        }
         auto cs = std::make_shared<tcp::socket>(std::move(client_socket));
         auto rs = std::make_shared<tcp::socket>(std::move(remote_socket));
         auto executor = co_await asio::this_coro::executor;
@@ -206,22 +182,18 @@ namespace SOCKS5 {
             co_await client_socket->async_wait(asio::socket_base::wait_read, asio::use_awaitable);
             std::array<unsigned char, 4096> buffer{};
             std::size_t bytes = co_await client_socket->async_read_some(asio::buffer(buffer), asio::use_awaitable);
-            std::cout << client_socket->remote_endpoint().port() << " read from client: " << bytes << std::endl;
             bytes = co_await remote_socket->async_write_some(asio::buffer(buffer, bytes), asio::use_awaitable);
-            std::cout << client_socket->remote_endpoint().port() <<" sent to dest: " << bytes << std::endl;
+
         }
 
     }
 
     asio::awaitable<void> Main_server::remote_to_client(std::shared_ptr<tcp::socket> remote_socket, std::shared_ptr<tcp::socket> client_socket) {
         for(;;) {
-            std::cerr << remote_socket->remote_endpoint().address() << std::endl;
             co_await remote_socket->async_wait(asio::socket_base::wait_read, asio::use_awaitable);
             std::array<unsigned char, 4096> buffer{};
             std::size_t bytes = co_await remote_socket->async_read_some(asio::buffer(buffer), asio::use_awaitable);
-            std::cout << client_socket->remote_endpoint().port() <<" read from dest: " << bytes << std::endl;
             co_await client_socket->async_write_some(asio::buffer(buffer, bytes), asio::use_awaitable);
-            std::cout << client_socket->remote_endpoint().port() <<" sent to client: " << bytes << std::endl;
         }
 
     }
