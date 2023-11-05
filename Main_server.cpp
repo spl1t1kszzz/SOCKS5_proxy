@@ -16,7 +16,7 @@ namespace SOCKS5 {
     }
 
     asio::awaitable<void> Main_server::start() {
-        const auto executor = co_await asio::this_coro::executor; // обязательно надо дождаться executor, иначе как запускать корутины?
+        const auto executor = co_await asio::this_coro::executor;
 
         tcp::acceptor acceptor{executor, {tcp::v4(), this->port}};
 
@@ -61,10 +61,8 @@ namespace SOCKS5 {
                 return handle_client_data(std::move(client_socket), std::move(remote_socket));
             }, asio::detached);
         } else {
-            std::cerr << endpoint.port() << std::endl;
             std::cerr << error.what() << std::endl;
         }
-
         co_return;
     }
 
@@ -90,7 +88,6 @@ namespace SOCKS5 {
     asio::awaitable<void> Main_server::send_auth_response(tcp::socket &socket, const unsigned char &method) {
         std::array<unsigned char, 2> response{SOCKS5::VERSION, method};
         co_await asio::async_write(socket, asio::buffer(response), asio::use_awaitable);
-
         co_return;
     }
 
@@ -114,18 +111,14 @@ namespace SOCKS5 {
         std::string ipStr;
         switch (request[3]) {
             case SOCKS5::IP_V4:
-                for (int i = 0; i < 4; ++i) {
-                    ip[i] = request[i + 4];
-                }
+                std::copy(request.data() + 4, request.data() + 8, ip.data());
                 ipStr =
                         std::to_string(ip[0]) + "." + std::to_string(ip[1]) + "." + std::to_string(ip[2]) + "." +
                         std::to_string(ip[3]);
 
-                // it's ok cuz port is always unsigned short type
                 dest_port = static_cast<unsigned short>(request[8]) << 8 | static_cast<unsigned short>(request[9]);
                 co_return tcp::endpoint{asio::ip::address_v4::from_string(ipStr), dest_port};
             case SOCKS5::DOMAINNAME:
-                // TODO: resolve DNS
                 int domain_name_len = static_cast<int>(request[4]);
                 std::vector<char> host_name(domain_name_len);
                 int i = 0;
@@ -137,7 +130,9 @@ namespace SOCKS5 {
                 asio::ip::tcp::resolver resolver{co_await asio::this_coro::executor};
                 asio::ip::tcp::resolver::query query{std::string(host_name.data(), domain_name_len),
                                                      std::to_string(dest_port)};
+
                 auto [ec, it] = co_await resolver.async_resolve(query, asio::as_tuple(asio::use_awaitable));
+
                 co_return *it;
                 break;
         }
@@ -183,9 +178,7 @@ namespace SOCKS5 {
             std::array<unsigned char, 4096> buffer{};
             std::size_t bytes = co_await client_socket->async_read_some(asio::buffer(buffer), asio::use_awaitable);
             bytes = co_await remote_socket->async_write_some(asio::buffer(buffer, bytes), asio::use_awaitable);
-
         }
-
     }
 
     asio::awaitable<void> Main_server::remote_to_client(std::shared_ptr<tcp::socket> remote_socket, std::shared_ptr<tcp::socket> client_socket) {
@@ -195,13 +188,6 @@ namespace SOCKS5 {
             std::size_t bytes = co_await remote_socket->async_read_some(asio::buffer(buffer), asio::use_awaitable);
             co_await client_socket->async_write_some(asio::buffer(buffer, bytes), asio::use_awaitable);
         }
-
     }
 
-
-
-
-
-
 }
-
