@@ -1,6 +1,5 @@
 #include "Main_server.hpp"
 
-
 namespace SOCKS5 {
 
     namespace asio = boost::asio;
@@ -118,7 +117,7 @@ namespace SOCKS5 {
 
                 dest_port = static_cast<unsigned short>(request[8]) << 8 | static_cast<unsigned short>(request[9]);
                 co_return tcp::endpoint{asio::ip::address_v4::from_string(ipStr), dest_port};
-            case SOCKS5::DOMAINNAME:
+            case SOCKS5::DOMAIN_NAME:
                 int domain_name_len = static_cast<int>(request[4]);
                 std::vector<char> host_name(domain_name_len);
                 int i = 0;
@@ -127,13 +126,21 @@ namespace SOCKS5 {
                 }
                 dest_port = static_cast<unsigned short>(request[i + 5]) << 8 | static_cast<unsigned short>(request[i + 6]);
 
-                asio::ip::tcp::resolver resolver{co_await asio::this_coro::executor};
-                asio::ip::tcp::resolver::query query{std::string(host_name.data(), domain_name_len),
-                                                     std::to_string(dest_port)};
-
-                auto [ec, it] = co_await resolver.async_resolve(query, asio::as_tuple(asio::use_awaitable));
-
-                co_return *it;
+                if (resolved_hosts[std::string(host_name.data(), domain_name_len)] != asio::ip::make_address_v4("0.0.0.0")) {
+                    //std::cout << "Already resolved: " << resolved_hosts[std::string(host_name.data(), domain_name_len)] << std::endl;
+                    co_return asio::ip::tcp::endpoint {this->resolved_hosts[std::string(host_name.data(), domain_name_len)], dest_port};
+                } else {
+                    asio::ip::tcp::resolver resolver{co_await asio::this_coro::executor};
+                    asio::ip::tcp::resolver::query query{std::string(host_name.data(), domain_name_len),
+                                                         std::to_string(dest_port)};
+                    auto [ec, it] = co_await resolver.async_resolve(query, asio::as_tuple(asio::use_awaitable));
+                    if (!ec) {
+                        asio::ip::tcp::endpoint endpoint = *it;
+                        resolved_hosts[std::string(host_name.data(), domain_name_len)] = endpoint.address().to_v4();
+                        //std::cout  <<  "New:" <<  endpoint.address() << std::endl;
+                        co_return *it;
+                    }
+                }
                 break;
         }
         co_return tcp::endpoint{tcp::v6(), 0};
@@ -142,22 +149,22 @@ namespace SOCKS5 {
 
     unsigned char Main_server::get_connect_error(const unsigned char &cmd, const boost::system::error_code &code) {
         if (code == boost::asio::error::network_unreachable) {
-            return 0x03;
+            return NETWORK_UNREACHABLE;
         } else if (code == boost::asio::error::host_unreachable) {
-            return 0x04;
+            return HOST_UNREACHABLE;
         } else if (code == boost::asio::error::connection_refused) {
-            return 0x05;
+            return CONNECTION_REFUSED;
         } else if (code == boost::asio::error::timed_out) {
-            return 0x06;
+            return TTL_EXPIRED;
         } else if (cmd != SOCKS5::CONNECT) {
-            return 0x07;
+            return COMMAND_NOT_SUPPORTED;
         } else if (code == boost::asio::error::address_family_not_supported) {
-            return 0x08;
+            return ADDRESS_TYPE_NOT_SUPPORTED;
         }
-        return SOCKS5::SUCCESS;
+        return SUCCESS;
     }
 
-
+    // we cannot use unique_ptr in coroutines
     asio::awaitable<void> Main_server::handle_client_data(tcp::socket client_socket, tcp::socket remote_socket) {
         auto cs = std::make_shared<tcp::socket>(std::move(client_socket));
         auto rs = std::make_shared<tcp::socket>(std::move(remote_socket));
