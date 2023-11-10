@@ -54,7 +54,9 @@ namespace SOCKS5 {
 
         static unsigned char get_connect_error(const unsigned char&cmd, const boost::system::error_code&code);
 
-        asio::awaitable<void> handle_client_data(tcp::socket client_socket, tcp::socket remote_socket);
+
+        // what is [[nodiscard]]
+        asio::awaitable<void> handle_client_data(tcp::socket client_socket, tcp::socket remote_socket) const;
 
         static asio::awaitable<void>
         remote_to_client(const std::shared_ptr<tcp::socket>& remote_socket, const std::shared_ptr<tcp::socket>& client_socket);

@@ -49,6 +49,7 @@ namespace SOCKS5 {
         tcp::socket remote_socket{co_await asio::this_coro::executor};
         if (auto [error] = co_await remote_socket.async_connect(endpoint, as_tuple(asio::use_awaitable)); !error) {
 
+            // it it takes 0x00 to be an int, so we can't use std::array
             // ReSharper disable once CppTemplateArgumentsCanBeDeduced
             std::array<unsigned char, 10> reply{
                 VERSION, 0x00, RSV, IP_V4, 0x7f, 0x00, 0x00,
@@ -169,7 +170,7 @@ namespace SOCKS5 {
     }
 
     // we cannot use unique_ptr in coroutines
-    asio::awaitable<void> Main_server::handle_client_data(tcp::socket client_socket, tcp::socket remote_socket) {
+    asio::awaitable<void> Main_server::handle_client_data(tcp::socket client_socket, tcp::socket remote_socket) const {
         auto cs = std::make_shared<tcp::socket>(std::move(client_socket));
         auto rs = std::make_shared<tcp::socket>(std::move(remote_socket));
         auto executor = co_await asio::this_coro::executor;
@@ -179,6 +180,7 @@ namespace SOCKS5 {
         co_spawn(executor, [this, cs, rs] {
                 return remote_to_client(rs, cs);
             }, asio::detached);
+        co_return;
     }
 
 
