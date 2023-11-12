@@ -139,6 +139,7 @@ namespace SOCKS5 {
                 asio::ip::tcp::resolver resolver{co_await asio::this_coro::executor};
                 asio::ip::tcp::resolver::query query{std::string(host_name.data(), domain_name_len),
                     std::to_string(dest_port)};
+                std::cout << std::string(host_name.data(), domain_name_len) << ' ' << dest_port << std::endl;
                 if (auto [ec, it] = co_await resolver.async_resolve(query, as_tuple(asio::use_awaitable)); !ec) {
                     asio::ip::tcp::endpoint endpoint = *it;
                     resolved_hosts[std::string(host_name.data(), domain_name_len)] = endpoint.address().to_v4();
